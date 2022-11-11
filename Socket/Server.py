@@ -47,6 +47,8 @@ def receive():
             print("Connected with {}".format(str(address)))
 
             client.send('USERNAME'.encode('utf-8'))
+            #client.send('{}:{}'.format(str(address[0]), str(address[1])))
+            
             nickname = client.recv(1024).decode('utf-8')
             nicknames.append(nickname)
             clients.append(client)
