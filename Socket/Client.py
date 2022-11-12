@@ -1,37 +1,45 @@
 import socket
 import threading
 
-client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client.connect(('', 8888))
-nickname = input("Username: ")
+host = ''
+port = 8000
 
+print("[ 채팅에 들어오신 것을 환영합니다! ]\n-- 채팅을 마치고 싶으시면  /quit  를 입력해주세요. --")
+username = input("\nUsername : ")
 
-def receive():
+def handle_receive(client_socket, user):
     while True:
         try:
-            message = client.recv(1024).decode('utf-8')
-            if message == 'USERNAME':
-                client.send(nickname.encode('utf-8'))
-            else:
-                print(message)
+            data = client_socket.recv(1024)
         except:
-            print("에러가 발생했습니다!")
-            client.close()
+            print("--- 연결이 끊어졌습니다. ---")
             break
+        data = data.decode('utf-8')
+        if not user in data:
+            print(data)
 
-#강아지@192.168.1.2:2000]
-def write():
+
+def handle_send(client_socket):
     while True:
-        #message = '{}@{}:{}:{} '.format(nickname,host,port, input(''))
-        message = '{} : {} '.format(nickname, input(''))
-        print(nickname + ": ")
-        client.send(message.encode('utf-8'))
+        data = input()
+        client_socket.send(data.encode('utf-8'))
+        if data == "/quit":
+            break
+    client_socket.close()
 
 
-# 멀티 클라이언트용 쓰레드
-receive_thread = threading.Thread(target=receive)
-receive_thread.start()
+if __name__ == '__main__':
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.connect((host, port))
+    client_socket.send(username.encode('utf-8'))
 
-# 메시지 보내기
-write_thread = threading.Thread(target=write)
-write_thread.start()
+    receive_thread = threading.Thread(target=handle_receive, args=(client_socket, username))
+    receive_thread.daemon = True
+    receive_thread.start()
+
+    send_thread = threading.Thread(target=handle_send, args=(client_socket,))
+    send_thread.daemon = True
+    send_thread.start()
+
+    send_thread.join()
+    receive_thread.join()
