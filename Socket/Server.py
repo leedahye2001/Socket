@@ -1,64 +1,75 @@
 import socket
 import threading
 
-host = ''
-port = 8888
+host = ""
+port = 8000
+usernames = {}
 
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.bind((host, port))
-server.listen()
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+server_socket.bind((host, port))
+# 3명의 클라이언트만 들어오게
+server_socket.listen(3)
 
-# 서버에 접속한 클라이언트 목록
-clients = []
-# 접속한 닉네임 목록
-nicknames = []
-
-
-# 서버가 받은 메시지를 클라이언트 전체에 보내기
-def broadcast(message):
-    for client in clients:
-        client.send(message)
-
-
-def handle(client):
-    while True:
+def msg_function(message):
+    print(message)
+    for conn in usernames.values():
         try:
-            # 클라이언트로부터 타당한 메시지를 받았는지 확인
-            message = client.recv(1024)
-            broadcast(message)
-
+            conn.send(message.encode('utf-8'))
         except:
-            # 클라이언트가 나갔으면 알림
-            index = clients.index(client)
-            clients.remove(client)
-            client.close()
-            nickname = nicknames[index]
+            print("연결이 끊어졌습니다.")
 
-            broadcast("{} 명이 채팅방에 남아있습니다!\n".format(len(nicknames)).encode('utf-8'))
-            nicknames.remove(nickname)
+def handle_receive(client_socket, address, username):
+    print("Username : {}".format(username))
+    msg = "\n[ %s @ %s : %s 님이 입장하셨습니다. ]" % (username, address[0], address[1])
+    msg_function(msg)
+
+    while True:
+        data = client_socket.recv(1024)
+        string = data.decode('utf-8')
+
+        if "/quit" in string:
+            msg = "---- %s @ %s : %s 님이 퇴장하셨습니다. ----" % (username, address[0], address[1])
+
+            # 유저 목록에서 방금 종료한 유저의 정보를 삭제
+            del usernames[username]
+            msg_function(msg)
             break
 
+        string = "%s @ %s : %s] %s" % (username, address[0], address[1], string)
+        msg_function(string)
+    client_socket.close()
 
-# 멀티 클라이언트를 받는 메서드
-def receive():
-        while True:
-            client, address = server.accept()
+def handle_notice(client_socket, address, user):
+    pass
 
-            print("Connected with {}".format(str(address)))
+def accept_func():
+    print('[ 서버와 연결되었습니다. ]')
 
-            client.send('USERNAME'.encode('utf-8'))
-            #client.send('{}:{}'.format(str(address[0]), str(address[1])))
-            
-            nickname = client.recv(1024).decode('utf-8')
-            nicknames.append(nickname)
-            clients.append(client)
+    while True:
+        try:
+            # 클라이언트 함수가 접속 시, 새로운 소켓 반환
+            client_socket, address = server_socket.accept()
+            print("Connected with [ {} : {} ]".format(str(address[0]), str(address[1])))
 
-            print("Username : {}".format(nickname))
-            broadcast("[ {} 님이 입장하셨습니다! ]\n".format(nickname).encode('utf-8'))
-            broadcast("[ {} 명이 이 채팅방 안에 있습니다! ]\n".format(len(nicknames)).encode('utf-8'))
-            client.send('-- 서버와 연결되었습니다. --'.encode('utf-8'))
-            thread = threading.Thread(target=handle, args=(client,))
-            thread.start()
+        except KeyboardInterrupt:
+            for user, conn in usernames:
+                conn.close()
+            server_socket.close()
+            print("Keyboard interrupt")
+            break
+
+        username = client_socket.recv(1024).decode('utf-8')
+        usernames[username] = client_socket
+
+        notice_thread = threading.Thread(target=handle_notice, args=(client_socket, address, username))
+        notice_thread.daemon = True
+        notice_thread.start()
+
+        receive_thread = threading.Thread(target=handle_receive, args=(client_socket, address, username))
+        receive_thread.daemon = True
+        receive_thread.start()
 
 
-receive()
+if __name__ == '__main__':
+    accept_func()
